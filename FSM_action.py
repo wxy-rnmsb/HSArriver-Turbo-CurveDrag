@@ -420,6 +420,7 @@ def init():
         pass
     shutdown_event.clear()
     initialize_recommendation_automation()
+    click.reset_mouse_runtime()
     click.center_mouse()
 
 

@@ -28,11 +28,20 @@ class FakeClock:
     def perf_counter(self):
         return self.now
 
+    def monotonic(self):
+        return self.now
+
     def sleep(self, seconds):
         self.now += seconds
 
 
 class MouseMotionCurveTests(unittest.TestCase):
+    def setUp(self):
+        self._saved_start = hearthstone_click.MOUSE_RUN_STARTED_AT
+
+    def tearDown(self):
+        hearthstone_click.MOUSE_RUN_STARTED_AT = self._saved_start
+
     def test_ease_in_out_accelerates_then_decelerates(self):
         self.assertAlmostEqual(0.0, hearthstone_click._ease_in_out(0.0))
         self.assertAlmostEqual(0.5, hearthstone_click._ease_in_out(0.5))
@@ -41,7 +50,13 @@ class MouseMotionCurveTests(unittest.TestCase):
         self.assertGreater(hearthstone_click._ease_in_out(0.75), 0.75)
 
     def test_duration_follows_distance_and_stays_in_range(self):
-        with patch.object(hearthstone_click.random, "uniform", return_value=1.0):
+        clock = FakeClock()
+        with (
+            patch.object(hearthstone_click.time, "monotonic",
+                         side_effect=clock.monotonic),
+            patch.object(hearthstone_click.random, "uniform", return_value=1.0),
+        ):
+            hearthstone_click.reset_mouse_runtime()
             near = hearthstone_click._move_duration(0)
             middle = hearthstone_click._move_duration(600)
             far = hearthstone_click._move_duration(1200)
@@ -51,6 +66,41 @@ class MouseMotionCurveTests(unittest.TestCase):
         self.assertLess(middle, far)
         self.assertAlmostEqual(0.50, far)
 
+    def test_runtime_speed_and_randomness_reach_two_times(self):
+        clock = FakeClock()
+        with patch.object(hearthstone_click.time, "monotonic",
+                          side_effect=clock.monotonic):
+            hearthstone_click.reset_mouse_runtime()
+            self.assertAlmostEqual(
+                1.0, hearthstone_click._runtime_speed_multiplier())
+            self.assertAlmostEqual(
+                1.0, hearthstone_click._runtime_randomness_multiplier())
+
+            clock.now = hearthstone_click.MOUSE_RAMP_SECONDS / 2
+            self.assertAlmostEqual(
+                1.5, hearthstone_click._runtime_speed_multiplier())
+
+            clock.now = hearthstone_click.MOUSE_RAMP_SECONDS
+            self.assertAlmostEqual(
+                2.0, hearthstone_click._runtime_speed_multiplier())
+            self.assertAlmostEqual(
+                2.0, hearthstone_click._runtime_randomness_multiplier())
+
+    def test_duration_approaches_half_after_runtime_ramp(self):
+        clock = FakeClock()
+        with (
+            patch.object(hearthstone_click.time, "monotonic",
+                         side_effect=clock.monotonic),
+            patch.object(hearthstone_click.random, "uniform", return_value=1.0),
+        ):
+            hearthstone_click.reset_mouse_runtime()
+            start = hearthstone_click._move_duration(1200)
+            clock.now = hearthstone_click.MOUSE_RAMP_SECONDS
+            end = hearthstone_click._move_duration(1200)
+
+        self.assertAlmostEqual(0.50, start)
+        self.assertAlmostEqual(0.25, end)
+
     def test_move_uses_a_curved_path_and_lands_exactly(self):
         mouse = MovingMouse((0, 0))
         clock = FakeClock()
@@ -59,6 +109,8 @@ class MouseMotionCurveTests(unittest.TestCase):
         with (
             patch.object(hearthstone_click.time, "perf_counter",
                          side_effect=clock.perf_counter),
+            patch.object(hearthstone_click.time, "monotonic",
+                         side_effect=clock.monotonic),
             patch.object(hearthstone_click.time, "sleep",
                          side_effect=clock.sleep),
             patch.object(hearthstone_click.random, "uniform",
@@ -66,6 +118,7 @@ class MouseMotionCurveTests(unittest.TestCase):
             patch.object(hearthstone_click.random, "choice",
                          return_value=1.0),
         ):
+            hearthstone_click.reset_mouse_runtime()
             hearthstone_click._move_mouse_to(
                 mouse, target, duration=0.20)
 

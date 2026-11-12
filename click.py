@@ -75,6 +75,12 @@ MOUSE_MOVE_MIN_SECONDS = 0.20
 MOUSE_MOVE_MAX_SECONDS = 0.50
 MOUSE_MOVE_REFERENCE_DISTANCE = 1200.0
 
+# 本次自动化运行期间：速度与路径随机性从 1.0 平滑增长到 2.0。
+MOUSE_RAMP_SECONDS = 1800.0
+MOUSE_MAX_SPEED_MULTIPLIER = 2.0
+MOUSE_MAX_RANDOMNESS_MULTIPLIER = 2.0
+MOUSE_RUN_STARTED_AT = None
+
 # 待命区域：客户区相对坐标（基准 1920×1080），右下角空白区域。
 MOUSE_RESET_REGION = (1760, 950, 1875, 1045)
 
@@ -100,16 +106,49 @@ def _ease_in_out(t):
     return t * t * (3.0 - 2.0 * t)
 
 
+def reset_mouse_runtime():
+    """每次自动化启动时重置“本次运行”计时。"""
+    global MOUSE_RUN_STARTED_AT
+    MOUSE_RUN_STARTED_AT = time.monotonic()
+
+
+def _runtime_ramp():
+    """返回 0~1 的运行时间进度；首次调用时自动开始计时。"""
+    global MOUSE_RUN_STARTED_AT
+    now = time.monotonic()
+    if MOUSE_RUN_STARTED_AT is None:
+        MOUSE_RUN_STARTED_AT = now
+    elapsed = max(0.0, now - MOUSE_RUN_STARTED_AT)
+    return _ease_in_out(min(elapsed / MOUSE_RAMP_SECONDS, 1.0))
+
+
+def _runtime_speed_multiplier():
+    """速度倍率：运行越久越快，最终为原来的 2 倍。"""
+    return 1.0 + _runtime_ramp() * (MOUSE_MAX_SPEED_MULTIPLIER - 1.0)
+
+
+def _runtime_randomness_multiplier():
+    """路径随机性倍率：运行越久越大，最终为原来的 2 倍。"""
+    return 1.0 + _runtime_ramp() * (
+        MOUSE_MAX_RANDOMNESS_MULTIPLIER - 1.0
+    )
+
+
 def _move_duration(distance):
-    """按距离计算移动时间，限制在 0.2~0.5 秒。"""
+    """按距离计算移动时间；起始为 0.2~0.5 秒，最终加速到约一半。"""
     ratio = min(max(distance, 0.0) / MOUSE_MOVE_REFERENCE_DISTANCE, 1.0)
     base = (
         MOUSE_MOVE_MIN_SECONDS
         + (MOUSE_MOVE_MAX_SECONDS - MOUSE_MOVE_MIN_SECONDS) * ratio
     )
+    speed = _runtime_speed_multiplier()
+    randomness = _runtime_randomness_multiplier()
+    jitter_span = 0.08 * randomness
+    duration = base * random.uniform(1.0 - jitter_span, 1.0 + jitter_span)
+    duration /= speed
     return max(
-        MOUSE_MOVE_MIN_SECONDS,
-        min(MOUSE_MOVE_MAX_SECONDS, base * random.uniform(0.92, 1.08)),
+        MOUSE_MOVE_MIN_SECONDS / MOUSE_MAX_SPEED_MULTIPLIER,
+        min(MOUSE_MOVE_MAX_SECONDS, duration),
     )
 
 
@@ -146,11 +185,16 @@ def _move_mouse_to(mouse, target, duration=None):
     # 垂直于起点—终点方向的单位法向量。
     nx, ny = -dy / distance, dx / distance
 
-    # 弧线幅度随距离变化，并限制最大 60 像素。
-    bend = min(distance * random.uniform(0.08, 0.18), 60.0)
+    randomness = _runtime_randomness_multiplier()
+
+    # 弧线幅度随距离和运行时间变化；上限也从 60 像素增长到 120 像素。
+    bend = min(
+        distance * random.uniform(0.08, 0.18),
+        60.0 * randomness,
+    )
     bend *= random.choice((-1.0, 1.0))
 
-    wobble_amp = random.uniform(1.0, 3.5)
+    wobble_amp = random.uniform(1.0, 3.5) * randomness
     wobble_cycles = random.uniform(1.5, 2.8)
     wobble_phase = random.uniform(0.0, 2.0 * math.pi)
 
