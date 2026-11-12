@@ -2,6 +2,7 @@ import win32gui
 import win32api
 import win32con
 import pywintypes
+import math
 import time
 from pynput.mouse import Button, Controller
 import random
@@ -69,10 +70,112 @@ def rand_sleep(interval):
     time.sleep(base_time + rand_time)
 
 
-# 鼠标复位点（只移动、不点击的待命位）：屏幕左上角空白处。
-# 历史：最初 (480, 540) 每局结束后会停在牌组选择界面第二行第一个卡组上，
-# 复位后偶发误选中该卡组；用户最终指定 (70, 60) 作为待命点。
-MOUSE_RESET_POS = (70, 60)
+# ---------------------------------------------------------------- 鼠标移动轨迹
+MOUSE_MOVE_MIN_SECONDS = 0.20
+MOUSE_MOVE_MAX_SECONDS = 0.50
+MOUSE_MOVE_REFERENCE_DISTANCE = 1200.0
+
+# 待命区域：客户区相对坐标（基准 1920×1080），右下角空白区域。
+MOUSE_RESET_REGION = (1760, 950, 1875, 1045)
+
+# 兼容旧代码/测试的“区域中心点”；实际复位使用 _random_reset_point()。
+MOUSE_RESET_POS = (
+    (MOUSE_RESET_REGION[0] + MOUSE_RESET_REGION[2]) // 2,
+    (MOUSE_RESET_REGION[1] + MOUSE_RESET_REGION[3]) // 2,
+)
+
+
+def _random_reset_point():
+    """在右下角待命区域内随机取一点。"""
+    x1, y1, x2, y2 = MOUSE_RESET_REGION
+    return (
+        random.randint(min(x1, x2), max(x1, x2)),
+        random.randint(min(y1, y2), max(y1, y2)),
+    )
+
+
+def _ease_in_out(t):
+    """平滑缓动：两端速度为 0，中段加速。"""
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _move_duration(distance):
+    """按距离计算移动时间，限制在 0.2~0.5 秒。"""
+    ratio = min(max(distance, 0.0) / MOUSE_MOVE_REFERENCE_DISTANCE, 1.0)
+    base = (
+        MOUSE_MOVE_MIN_SECONDS
+        + (MOUSE_MOVE_MAX_SECONDS - MOUSE_MOVE_MIN_SECONDS) * ratio
+    )
+    return max(
+        MOUSE_MOVE_MIN_SECONDS,
+        min(MOUSE_MOVE_MAX_SECONDS, base * random.uniform(0.92, 1.08)),
+    )
+
+
+def _move_mouse_to(mouse, target, duration=None):
+    """
+    从当前位置沿弯曲轨迹移动到 target（屏幕坐标）。
+
+    轨迹 = 缓动直线 + 椭圆弧 + 两端归零的随机摆动。
+    最后会精确落到 target，避免影响点击精度。
+    """
+    tx, ty = int(round(target[0])), int(round(target[1]))
+
+    try:
+        sx, sy = mouse.position
+        sx, sy = int(round(sx)), int(round(sy))
+    except Exception:
+        mouse.position = (tx, ty)
+        return
+
+    dx, dy = tx - sx, ty - sy
+    distance = math.hypot(dx, dy)
+    if distance < 2.0:
+        mouse.position = (tx, ty)
+        return
+
+    if duration is None:
+        duration = _move_duration(distance)
+
+    duration = max(0.0, float(duration))
+    if duration == 0.0:
+        mouse.position = (tx, ty)
+        return
+
+    # 垂直于起点—终点方向的单位法向量。
+    nx, ny = -dy / distance, dx / distance
+
+    # 弧线幅度随距离变化，并限制最大 60 像素。
+    bend = min(distance * random.uniform(0.08, 0.18), 60.0)
+    bend *= random.choice((-1.0, 1.0))
+
+    wobble_amp = random.uniform(1.0, 3.5)
+    wobble_cycles = random.uniform(1.5, 2.8)
+    wobble_phase = random.uniform(0.0, 2.0 * math.pi)
+
+    started = time.perf_counter()
+    while True:
+        elapsed = time.perf_counter() - started
+        raw_t = min(elapsed / duration, 1.0)
+        t = _ease_in_out(raw_t)
+        envelope = math.sin(math.pi * t)
+        offset = (
+            bend * envelope
+            + wobble_amp
+            * math.sin(2.0 * math.pi * wobble_cycles * t + wobble_phase)
+            * envelope
+        )
+
+        x = sx + dx * t + nx * offset
+        y = sy + dy * t + ny * offset
+        mouse.position = (int(round(x)), int(round(y)))
+
+        if raw_t >= 1.0:
+            break
+        time.sleep(0.004)
+
+    mouse.position = (tx, ty)
 
 # 右侧辅助点候选：激活后台炉石、取消右键都用它。
 # 历史 bug：这两个点原来写死 (1800,500)/(1700,400)，而右上角日志浮窗
@@ -128,13 +231,16 @@ HAND_HOVER_SIZES = (3, 8)    # 手牌张数未知，按常见张数取卡位
 def center_mouse(mouse=None):
     """Move the pointer to the neutral reset point without clicking.
 
-    MOUSE_RESET_POS 是客户区相对坐标（基准 1920×1080），这里换算成屏幕坐标；
+    复位点在右下角区域内随机选择（客户区相对坐标，基准 1920×1080），换算成屏幕坐标；
     炉石没开、拿不到客户区映射时原样使用（与改造前一致）。
     """
     if mouse is None:
         mouse = Controller()
-    mouse.position = _to_screen(MOUSE_RESET_POS[0], MOUSE_RESET_POS[1],
-                                _display_mapping())
+    point = _random_reset_point()
+    _move_mouse_to(
+        mouse,
+        _to_screen(point[0], point[1], _display_mapping()),
+    )
 
 
 def _random_hand_hover_point(last=None):
@@ -173,7 +279,7 @@ def human_like_pause(mouse=None, settings=None):
         point = _random_hand_hover_point(last)
         # 悬停点同样是客户区相对坐标，落到屏幕上要先换算。
         point = _to_screen(point[0], point[1], mapping)
-        mouse.position = point
+        _move_mouse_to(mouse, point)
         last = point
         hover = random.uniform(cfg["hover_min"], cfg["hover_max"])
         time.sleep(min(hover, remaining))
@@ -217,8 +323,13 @@ def hover_opponent_minion(oppo_index, oppo_num, mouse=None, settings=None,
         duration = random.uniform(
             float(cfg.get("minion_hover_min", DEFAULT_HUMAN_LIKE["minion_hover_min"])),
             float(cfg.get("minion_hover_max", DEFAULT_HUMAN_LIKE["minion_hover_max"])))
-    mouse.position = _to_screen(*opponent_minion_hover_point(oppo_index, oppo_num),
-                                _display_mapping())
+    _move_mouse_to(
+        mouse,
+        _to_screen(
+            *opponent_minion_hover_point(oppo_index, oppo_num),
+            _display_mapping()
+        ),
+    )
     sys_print(f"[SYS] 活人感 延时 {duration:.1f}s 后（悬停对手新随从）")
     time.sleep(max(0.0, duration))
     center_mouse(mouse)
@@ -252,7 +363,7 @@ def run_hearthstone_action(action):
 
 
 def _send_physical_click(mouse, x, y, button):
-    mouse.position = (x, y)
+    _move_mouse_to(mouse, (x, y))
     rand_sleep(0.1)
     mouse.press(button)
     rand_sleep(0.1)
@@ -426,12 +537,18 @@ def drag_card_to_board_entity(card_index, card_num, entity_index, entity_num):
 
     mouse = Controller()
     mapping = _display_mapping()
-    mouse.position = _to_screen(HAND_CARD_X[card_num][card_index], 1000, mapping)
+    _move_mouse_to(
+        mouse,
+        _to_screen(HAND_CARD_X[card_num][card_index], 1000, mapping),
+    )
     rand_sleep(0.1)
     mouse.press(Button.left)
     try:
         board_x = 960 - (entity_num - 1) * 70 + entity_index * 140
-        mouse.position = _to_screen(board_x - 25, 600, mapping)
+        _move_mouse_to(
+            mouse,
+            _to_screen(board_x - 25, 600, mapping),
+        )
         rand_sleep(0.1)
     finally:
         mouse.release(Button.left)
@@ -538,7 +655,10 @@ def drag_card_to_deck():
     try:
         rand_sleep(0.1)
         # 我方牌库中心点（客户区相对坐标，1920x1080 实测：1635,640）。
-        mouse.position = _to_screen(1635, 640, _display_mapping())
+        _move_mouse_to(
+            mouse,
+            _to_screen(1635, 640, _display_mapping()),
+        )
         rand_sleep(DECK_DROP_HOLD_INTERVAL)
     finally:
         mouse.release(Button.left)

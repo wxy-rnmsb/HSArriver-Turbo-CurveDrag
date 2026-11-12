@@ -11,6 +11,8 @@ import click as hearthstone_click
 import config
 from src.recommendation_models import ActionKind
 
+SAFE_POINT = (1800, 1000)
+
 
 class RecordingMouse:
     """只记录事件，不真的动系统鼠标。"""
@@ -128,6 +130,8 @@ class HumanLikePauseTests(unittest.TestCase):
             # 鼠标位置现在要经 display_mapping 换算成屏幕坐标；这里注入"读不到
             # 客户区"，让断言用的是客户区相对坐标（不受测试机窗口位置影响）。
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ]
         for item in self._patches:
             item.start()
@@ -157,7 +161,7 @@ class HumanLikePauseTests(unittest.TestCase):
         moves = self.mouse.moves
         # 3 处悬停 + 最后复位 1 次
         self.assertEqual(4, len(moves))
-        self.assertEqual(hearthstone_click.MOUSE_RESET_POS, moves[-1])
+        self.assertEqual(SAFE_POINT, moves[-1])
         valid_x = self._valid_hand_x()
         for point in moves[:-1]:
             x, y = point
@@ -180,7 +184,7 @@ class HumanLikePauseTests(unittest.TestCase):
         self.assertEqual(0.5, total)
         moves = self.mouse.moves
         self.assertEqual(2, len(moves))                       # 1 处悬停 + 复位
-        self.assertEqual(hearthstone_click.MOUSE_RESET_POS, moves[-1])
+        self.assertEqual(SAFE_POINT, moves[-1])
         self.assertEqual([0.5], self.clock.slept)             # 只停到延时结束
 
     def test_hover_duration_is_random_per_hover(self):
@@ -236,13 +240,15 @@ class ParkMouseTests(unittest.TestCase):
             patch.object(hearthstone_click, "human_like_pause",
                          side_effect=lambda m=None, s=None: called.append(1)),
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
             patch.object(hearthstone_click.time, "sleep") as sleep,
         ):
             hearthstone_click.park_mouse(mouse)
 
         self.assertEqual([], called)                 # 不再自动触发活人感
         sleep.assert_called_once_with(0.1)
-        self.assertEqual([("position", hearthstone_click.MOUSE_RESET_POS)],
+        self.assertEqual([("position", SAFE_POINT)],
                          mouse.events)
 
     def test_action_session_parks_plainly(self):
@@ -256,13 +262,15 @@ class ParkMouseTests(unittest.TestCase):
                          side_effect=lambda m=None, s=None: called.append(1)),
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
             patch.object(hearthstone_click.time, "sleep"),
         ):
             with hearthstone_click.hearthstone_action_session():
                 pass
 
         self.assertEqual([], called)
-        self.assertEqual([("position", hearthstone_click.MOUSE_RESET_POS)],
+        self.assertEqual([("position", SAFE_POINT)],
                          mouse.events)
 
 

@@ -12,6 +12,8 @@ from unittest.mock import patch
 import click as hearthstone_click
 import config
 
+SAFE_POINT = (1800, 1000)
+
 
 class RecordingMouse:
     """只记录事件，不真的动系统鼠标。"""
@@ -79,6 +81,8 @@ class HoverOpponentMinionTests(unittest.TestCase):
             # 悬停点要经 display_mapping 换算成屏幕坐标；注入"读不到客户区"，
             # 断言就用客户区相对坐标（不受测试机窗口位置/尺寸影响）。
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ]
         for item in self._patches:
             item.start()
@@ -95,7 +99,7 @@ class HoverOpponentMinionTests(unittest.TestCase):
         self.assertEqual(0.9, duration)
         moves = self.mouse.moves
         self.assertEqual(2, len(moves))
-        self.assertEqual(hearthstone_click.MOUSE_RESET_POS, moves[-1])
+        self.assertEqual(SAFE_POINT, moves[-1])
         self.assertEqual([0.9], self.slept)
         self.assertEqual([], [e for e in self.mouse.events if e[0] != "position"])
         self.assertIn("活人感 延时 0.9s 后", self.printed[0])

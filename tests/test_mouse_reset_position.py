@@ -14,7 +14,7 @@ from unittest.mock import patch
 import click as hearthstone_click
 import display_mapping
 
-RESET = (70, 60)
+SAFE_POINT = (1800, 1000)
 
 
 class RecordingMouse:
@@ -46,7 +46,10 @@ class MouseResetPositionTests(unittest.TestCase):
         display_mapping.clear_mapping_cache()
 
     def test_reset_position_is_the_safe_spot(self):
-        self.assertEqual(RESET, hearthstone_click.MOUSE_RESET_POS)
+        x1, y1, x2, y2 = hearthstone_click.MOUSE_RESET_REGION
+        x, y = hearthstone_click.MOUSE_RESET_POS
+        self.assertTrue(x1 <= x <= x2)
+        self.assertTrue(y1 <= y <= y2)
 
     def test_center_mouse_only_moves_the_pointer(self):
         mouse = RecordingMouse()
@@ -54,10 +57,12 @@ class MouseResetPositionTests(unittest.TestCase):
         with (
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ):
             hearthstone_click.center_mouse()
 
-        self.assertEqual([("position", RESET)], mouse.events)
+        self.assertEqual([("position", SAFE_POINT)], mouse.events)
 
     def test_center_mouse_follows_the_client_origin(self):
         """客户区在 (960,551) 时，待命点也要整体跟着偏移。"""
@@ -70,10 +75,15 @@ class MouseResetPositionTests(unittest.TestCase):
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "_display_mapping",
                          return_value=mapping),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ):
             hearthstone_click.center_mouse()
 
-        self.assertEqual([("position", (960 + 70, 551 + 60))], mouse.events)
+        self.assertEqual(
+            [("position", (960 + SAFE_POINT[0], 551 + SAFE_POINT[1]))],
+            mouse.events,
+        )
 
     def test_park_mouse_moves_without_clicking(self):
         mouse = RecordingMouse()
@@ -82,10 +92,12 @@ class MouseResetPositionTests(unittest.TestCase):
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
             patch.object(hearthstone_click.time, "sleep"),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ):
             hearthstone_click.park_mouse()
 
-        self.assertEqual([("position", RESET)], mouse.events)
+        self.assertEqual([("position", SAFE_POINT)], mouse.events)
 
     def test_action_session_parks_at_the_safe_spot(self):
         mouse = RecordingMouse()
@@ -94,11 +106,13 @@ class MouseResetPositionTests(unittest.TestCase):
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
             patch.object(hearthstone_click.time, "sleep"),
+            patch.object(hearthstone_click, "_random_reset_point",
+                         return_value=SAFE_POINT),
         ):
             with hearthstone_click.hearthstone_action_session():
                 pass
 
-        self.assertEqual([("position", RESET)], mouse.events)
+        self.assertEqual([("position", SAFE_POINT)], mouse.events)
 
 
 class PostGameClickPointTests(unittest.TestCase):

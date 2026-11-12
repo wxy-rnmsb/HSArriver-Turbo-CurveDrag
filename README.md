@@ -21,6 +21,33 @@
 
 </div>
 
+## 本 fork 的改动（HSArriver-Turbo-CurveDrag）
+
+本 fork 基于 [Donald-Yip/HSArriver-Turbo](https://github.com/Donald-Yip/HSArriver-Turbo)，
+仅修改鼠标移动与待命位置相关逻辑：
+
+- 鼠标从“瞬间跳到目标点”改为**类椭圆曲线移动**；
+- 移动过程中加入**随机小幅摆动**，起点和终点处自动归零；
+- 使用 `smoothstep` 缓动，实现**先加速、后减速**；
+- 移动时间根据距离计算并限制在 **0.2～0.5 秒**；
+- 最终位置仍精确落在目标点，不影响点击精度；
+- 默认待命位置从左上角改为**右下角随机区域**
+  `MOUSE_RESET_REGION = (1760, 950, 1875, 1045)`；
+- 点击、左右键、悬停、复位以及两个拖拽函数统一经过
+  `_move_mouse_to()`，不再直接瞬移。
+
+涉及文件：
+
+```text
+click.py
+tests/test_mouse_motion_curve.py
+tests/test_mouse_reset_position.py
+tests/test_human_like.py
+tests/test_human_like_minion_hover.py
+```
+
+详细说明见 [FORK_CHANGES.md](FORK_CHANGES.md)。
+
 > 网页控制台（界面示意，你机器上的数值会不同）：顶部是运行概览与环境自检，往下依次是基础配置、定时任务、对战控制、存活检测、中断重启、自动投降、**卡组识别投降**、段位目标、活人感、延时设置、校准区域、实时日志。
 >
 > 📝 **更新日志**：[CHANGELOG.md](CHANGELOG.md)（最近一次 2026-10-24：四选一/发现后按盒子提示选随从目标、换牌后不再随机看手牌、浮窗「装好没反应？」自查按钮+本地/最新版本、GitHub 发版流程）。
