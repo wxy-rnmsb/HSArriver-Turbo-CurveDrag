@@ -286,6 +286,11 @@ class ClickExecutor:
                     pass
                 raise
 
+    def _sleep(self, seconds):
+        """鼠标动作前的固定等待也加小幅随机化。"""
+        jitter = getattr(self.click, "jitter_delay", None)
+        self.sleep(jitter(seconds) if jitter else seconds)
+
     def _click_target(self, target: Target, my_count: int, oppo_count: int):
         if target.side == "friendly":
             if target.kind == "hero":
@@ -306,7 +311,7 @@ class ClickExecutor:
         地标本来就在场上，手牌数量不变，不传 played_hand_index。
         目标是手牌时 UI 出现得比普通随从目标晚，这里统一等 0.9s 再点。
         """
-        self.sleep(0.9)
+        self._sleep(0.9)
         screen_index = (hand_target_index - 1
                         if played_hand_index is not None
                         and played_hand_index < hand_target_index
@@ -336,7 +341,7 @@ class ClickExecutor:
             is_friendly_hand_target = (
                 target.side == "friendly" and target.kind == "hand")
             if not is_friendly_hand_target:
-                self.sleep(0.4)
+                self._sleep(0.4)
         if target is not None:
             adjusted = target
             if target.side == "friendly" and target.kind == "hand":
@@ -371,13 +376,13 @@ class ClickExecutor:
             self.click.click_middle()
             self._select_choose_one(choose_one)
             if target is not None:
-                self.sleep(0.3)
+                self._sleep(0.3)
                 self._click_target(target, my_count, oppo_count)
         elif target is None:
             if hand_count <= 2:
                 # With a nearly empty hand, the fan re-centers noticeably.
                 # Let the cards reach their final positions before selecting.
-                self.sleep(0.3)
+                self._sleep(0.3)
                 self.click.choose_card(hand_index, hand_count)
                 self.click.click_middle()
             else:
@@ -409,7 +414,7 @@ class ClickExecutor:
         self.click.choose_my_board_entity(
             location_screen_index, board_slot_count)
         if target is not None:
-            self.sleep(0.3)
+            self._sleep(0.3)
             if target.side == "friendly" and target.kind == "hand":
                 # 守护巨龙之厅这类地标让你选一张自己的手牌：地标已在场上，
                 # 手牌数量就是当前手牌数（不像出随从那样要先减去自己）。
@@ -427,7 +432,7 @@ class ClickExecutor:
             starship_screen_index, board_count)
         # 第一次点击只是把组件面板展开，面板里的「发射」按钮要等它画完，
         # 立刻点会点空（实测约 0.8s 才稳定）。
-        self.sleep(0.8)
+        self._sleep(0.8)
         self.click.click_launch_starship()
 
     def play_weapon(self, hand_index, hand_count):
@@ -456,7 +461,7 @@ class ClickExecutor:
             self.click.click_skill()
             self._select_choose_one(choose_one)
             if target is not None:
-                self.sleep(0.3)
+                self._sleep(0.3)
                 self._click_target(target, my_count, oppo_count)
             self.click.cancel_click()
             return
@@ -469,7 +474,7 @@ class ClickExecutor:
 
     def _select_choose_one(self, choice):
         if choice is not None:
-            self.sleep(0.3)
+            self._sleep(0.3)
             self.click.choose_discover_card(choice.choice_index, choice.choice_count)
 
     def choose_discover_card(self, choice_index, choice_count, target=None,
@@ -492,7 +497,7 @@ class ClickExecutor:
             return
         delay = (0.3 if choice_delay is None else float(choice_delay))
         if delay > 0:
-            self.sleep(delay)
+            self._sleep(delay)
         self._click_target(target, my_count, oppo_count)
         self.click.cancel_click()
 
@@ -511,7 +516,7 @@ class ClickExecutor:
             if target.index is None or not 0 <= target.index < hand_count:
                 raise ValueError("hand_target_out_of_range")
             # 手牌区域的牌比场上目标晚一点出现，给 UI 一点收起时间。
-            self.sleep(0.3)
+            self._sleep(0.3)
             self.click.choose_card(target.index, hand_count)
             return
         self._click_target(target, my_count, oppo_count)

@@ -334,9 +334,10 @@ class StarshipLaunchClickTests(unittest.TestCase):
             hearthstone_click.left_click(1070, 920, mapping=mapping)
 
         x, y = click_button.call_args[0][:2]
-        # left_click 会加 ±2/3px 拟人抖动，所以只验证"基准点 + 窗口偏移"。
-        self.assertAlmostEqual(960 + 1070, x, delta=3)
-        self.assertAlmostEqual(551 + 920, y, delta=3)
+        # left_click 的抖动只向右 0~10px、纵向 ±15px。
+        self.assertGreaterEqual(x, 960 + 1070)
+        self.assertLessEqual(x, 960 + 1070 + 10)
+        self.assertAlmostEqual(551 + 920, y, delta=15)
 
     def test_missing_window_is_refused_without_clicking(self):
         with patch.object(hearthstone_click, "get_HS_hwnd", return_value=0):

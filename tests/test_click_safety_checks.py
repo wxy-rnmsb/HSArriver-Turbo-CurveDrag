@@ -31,6 +31,8 @@ class ClickSafetyCheckRemovalTests(unittest.TestCase):
             patch.object(hearthstone_click, "get_HS_hwnd", return_value=0),
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "rand_sleep"),
+            patch.object(hearthstone_click, "_jitter_click_point",
+                         side_effect=lambda x, y: (x, y)),
         ):
             hearthstone_click.click_button(
                 960, 650, hearthstone_click.Button.left)
@@ -58,6 +60,8 @@ class ClickSafetyCheckRemovalTests(unittest.TestCase):
             ),
             patch.object(hearthstone_click, "Controller", return_value=mouse),
             patch.object(hearthstone_click, "rand_sleep"),
+            patch.object(hearthstone_click, "_jitter_click_point",
+                         side_effect=lambda x, y: (x, y)),
         ):
             hearthstone_click.click_button(
                 960, 650, hearthstone_click.Button.left)

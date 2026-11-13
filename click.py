@@ -70,6 +70,19 @@ def rand_sleep(interval):
     time.sleep(base_time + rand_time)
 
 
+def jitter_delay(seconds, ratio=0.08):
+    """给固定延时加小幅随机波动，默认 ±8%。"""
+    seconds = max(0.0, float(seconds))
+    if seconds == 0.0:
+        return 0.0
+    return max(0.0, seconds * random.uniform(1.0 - ratio, 1.0 + ratio))
+
+
+def jitter_sleep(seconds, ratio=0.08):
+    """随机化后的 sleep，供固定延时使用。"""
+    time.sleep(jitter_delay(seconds, ratio))
+
+
 # ---------------------------------------------------------------- 鼠标移动轨迹
 MOUSE_MOVE_MIN_SECONDS = 0.20
 MOUSE_MOVE_MAX_SECONDS = 0.50
@@ -104,6 +117,21 @@ def _ease_in_out(t):
     """平滑缓动：两端速度为 0，中段加速。"""
     t = max(0.0, min(1.0, t))
     return t * t * (3.0 - 2.0 * t)
+
+
+def _jitter_click_point(x, y):
+    """
+    点击坐标随机化。
+
+    x 不向左偏移：范围为 [x, x+10]，均值约 x+3；
+    y 范围为 [y-15, y+15]，中心为 y。
+    """
+    x_offset = random.betavariate(3.0, 7.0) * 10.0
+    y_offset = random.triangular(-15.0, 15.0, 0.0)
+    return (
+        int(round(x + x_offset)),
+        int(round(y + y_offset)),
+    )
 
 
 def reset_mouse_runtime():
@@ -388,7 +416,7 @@ def park_mouse(mouse=None):
     由流程层调用（RecommendationFlow 的 post_action_pause；换牌不接），
     否则匹配对手、选卡组、错误弹窗取消这类非推荐动作也会被拖慢。
     """
-    time.sleep(0.1)
+    jitter_sleep(0.1)
     center_mouse(mouse)
 
 
@@ -414,7 +442,7 @@ def _send_physical_click(mouse, x, y, button):
     mouse.release(button)
 
 
-def click_button(x, y, button, require_hearthstone=True):
+def click_button(x, y, button, require_hearthstone=True, jitter=True):
     """在**屏幕坐标** (x, y) 上按下/松开按钮。
 
     这是"屏幕坐标出口"：调用方传进来的必须已经是屏幕坐标。客户区相对坐标
@@ -423,6 +451,8 @@ def click_button(x, y, button, require_hearthstone=True):
     hearthstone_hwnd = get_HS_hwnd() if require_hearthstone else 0
     mouse = Controller()
     rand_sleep(0.1)
+    if jitter:
+        x, y = _jitter_click_point(x, y)
     if (require_hearthstone
             and hearthstone_hwnd != 0
             and win32gui.GetForegroundWindow() != hearthstone_hwnd):
@@ -432,6 +462,9 @@ def click_button(x, y, button, require_hearthstone=True):
         # 该点必须真的落在炉石上：右上角日志浮窗会盖住固定坐标（见 side_point）。
         activate_x, activate_y = side_point(hearthstone_hwnd,
                                             preferred=(1800, 500))
+        if jitter:
+            activate_x, activate_y = _jitter_click_point(
+                activate_x, activate_y)
         _send_physical_click(
             mouse, activate_x, activate_y, Button.right)
         rand_sleep(0.25)
@@ -441,19 +474,20 @@ def click_button(x, y, button, require_hearthstone=True):
 def left_click(x, y, require_hearthstone=True, mapping=None):
     """点客户区相对坐标 (x, y)（基准 1920×1080）。
 
-    抖动在**客户区相对坐标**里做：±2px 的拟人幅度不随窗口缩放变化。
+    抖动在**客户区相对坐标**里做：x 只向右 0~10px，均值约 +3px；
+    y 在 ±15px 内按三角分布取值。
     换算集中在 click_button（屏幕坐标出口），所以 click_button 的调用方
     传的必须是屏幕坐标。mapping 供测试注入，默认取实时客户区映射。
     """
-    x += random.randint(-2, 3)
-    y += random.randint(-2, 3)
+    x, y = _jitter_click_point(x, y)
     x, y = _to_screen(x, y, mapping if mapping is not None else _display_mapping())
-    click_button(x, y, Button.left, require_hearthstone)
+    click_button(x, y, Button.left, require_hearthstone, jitter=False)
 
 
 def right_click(x, y, require_hearthstone=True, mapping=None):
+    x, y = _jitter_click_point(x, y)
     x, y = _to_screen(x, y, mapping if mapping is not None else _display_mapping())
-    click_button(x, y, Button.right, require_hearthstone)
+    click_button(x, y, Button.right, require_hearthstone, jitter=False)
 
 
 def choose_my_board_entity(entity_index, entity_num):
@@ -581,17 +615,20 @@ def drag_card_to_board_entity(card_index, card_num, entity_index, entity_num):
 
     mouse = Controller()
     mapping = _display_mapping()
+    hand_x, hand_y = _jitter_click_point(
+        HAND_CARD_X[card_num][card_index], 1000)
     _move_mouse_to(
         mouse,
-        _to_screen(HAND_CARD_X[card_num][card_index], 1000, mapping),
+        _to_screen(hand_x, hand_y, mapping),
     )
     rand_sleep(0.1)
     mouse.press(Button.left)
     try:
         board_x = 960 - (entity_num - 1) * 70 + entity_index * 140
+        board_x, board_y = _jitter_click_point(board_x - 25, 600)
         _move_mouse_to(
             mouse,
-            _to_screen(board_x - 25, 600, mapping),
+            _to_screen(board_x, board_y, mapping),
         )
         rand_sleep(0.1)
     finally:
@@ -699,9 +736,10 @@ def drag_card_to_deck():
     try:
         rand_sleep(0.1)
         # 我方牌库中心点（客户区相对坐标，1920x1080 实测：1635,640）。
+        deck_x, deck_y = _jitter_click_point(1635, 640)
         _move_mouse_to(
             mouse,
-            _to_screen(1635, 640, _display_mapping()),
+            _to_screen(deck_x, deck_y, _display_mapping()),
         )
         rand_sleep(DECK_DROP_HOLD_INTERVAL)
     finally:
@@ -780,29 +818,29 @@ def hero_beat_hero():
 
 
 def _choose_my_attacker(mine_index, mine_number):
-    time.sleep(0.05)
+    jitter_sleep(0.05)
     x = 960 - (mine_number - 1) * 70 + mine_index * 140
     left_click(x, 600)
 
 
 def _choose_my_hero_attacker():
-    time.sleep(0.05)
+    jitter_sleep(0.05)
     left_click(960, 850)
 
 
 def _choose_attack_target(oppo_index, oppo_num):
-    time.sleep(0.05)
+    jitter_sleep(0.05)
     x = 960 - (oppo_num - 1) * 70 + oppo_index * 140
     left_click(x, 400)
 
 
 def _choose_attack_target_hero():
-    time.sleep(0.05)
+    jitter_sleep(0.05)
     left_click(960, 200)
 
 
 def _finish_attack():
-    time.sleep(0.05)
+    jitter_sleep(0.05)
     right_click(*side_point(get_HS_hwnd(), preferred=(1700, 400)))
 
 

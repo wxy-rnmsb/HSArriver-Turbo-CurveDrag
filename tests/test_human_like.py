@@ -247,7 +247,10 @@ class ParkMouseTests(unittest.TestCase):
             hearthstone_click.park_mouse(mouse)
 
         self.assertEqual([], called)                 # 不再自动触发活人感
-        sleep.assert_called_once_with(0.1)
+        sleep.assert_called_once()
+        delay = sleep.call_args.args[0]
+        self.assertGreaterEqual(delay, 0.092)
+        self.assertLessEqual(delay, 0.108)
         self.assertEqual([("position", SAFE_POINT)],
                          mouse.events)
 

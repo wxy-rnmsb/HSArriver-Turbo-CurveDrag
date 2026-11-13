@@ -625,7 +625,7 @@ def ChoosingHeroAction():
 
     # 只留一帧的 UI 稳定时间：原来固定等 2 秒，段位读取本身有重试（卡面没画出来
     # 会重读），这里再死等只会把「点开始匹配」整体往后推。
-    time.sleep(0.2)
+    click.jitter_sleep(0.2)
     # 排队前段位闸门（用户口径）：
     #   action=stop「上分停止」：读到名次已达标 → **不点**「开始匹配」，本局结束后停止；
     #   action=keep「控分」    ：读到名次比目标更靠前 → 进这一局后**开局即投降**，
@@ -668,7 +668,7 @@ def ChoosingHeroAction():
     # 需要换卡组时先停自动化再执行上述命令，不要在这里恢复自动点击。
     click.run_hearthstone_action(click.match_opponent)
     _start_milestone("已点「开始匹配」")
-    time.sleep(1)
+    click.jitter_sleep(1)
     return FSM_MATCHING
 
 
@@ -765,7 +765,7 @@ def ChoosingCardAction():
                     verified = True
                     # 点击确认后等界面切换，再检测“确认”按钮是否还在：
                     # 还在 → 换牌未提交成功，重新执行；消失 → 已提交。
-                    time.sleep(0.5)
+                    click.jitter_sleep(0.5)
                     if confirm_button_present():
                         confirmed_waiting = False
                         verified = False
@@ -773,7 +773,7 @@ def ChoosingCardAction():
                             "confirm_still_there",
                             "换牌确认仍在（未提交成功），重新执行……")
                         continue
-                time.sleep(0.3)
+                click.jitter_sleep(0.3)
                 continue
             # 每轮开头先检测“确认”按钮：在 → 执行换牌；不在 → 等 retry 再试。
             if not confirm_button_present():
@@ -788,7 +788,7 @@ def ChoosingCardAction():
                 verified = False
                 _report_mulligan_diagnostic(
                     "confirmed", "已执行换牌，检测确认按钮……")
-                time.sleep(0.3)
+                click.jitter_sleep(0.3)
                 continue
             message = f"换牌推荐暂不可执行，继续重试：{result.diagnostics}"
             # 换牌面板已不在/阶段已变更时给出更明确提示，避免误以为卡死。
@@ -1860,9 +1860,9 @@ def _do_concede(reason=None):
     try:
         with click.hearthstone_action_session():
             click.click_setting()      # 齿轮 (1895, 1060)
-            time.sleep(1.0)            # 等游戏菜单弹出
+            click.jitter_sleep(1.0)    # 等游戏菜单弹出
             click.click_concede()      # 认输 (960, 380)
-        time.sleep(1.0)
+        click.jitter_sleep(1.0)
     except Exception as exc:
         manual_controller.output(f"[SYS] 自动认输点击失败：{exc}")
 
@@ -2049,7 +2049,7 @@ def _keep_score_once() -> bool:
     if not back:
         warn_print("[SYS] 控分：投降后没等到选卡组界面，交由状态机自己找路。")
         return False
-    time.sleep(1.5)  # 留一点时间让界面稳定，方便下一步读名次。
+    click.jitter_sleep(1.5)  # 留一点时间让界面稳定，方便下一步读名次。
     manual_controller.output(
         f"[SYS] 控分：已投降 {_keep_score_count} 局，重新检查名次。")
     return True
@@ -2172,7 +2172,7 @@ def Battling():
             return next_state
         if next_state == FSM_ERROR:
             return next_state
-        time.sleep(0.2)
+        click.jitter_sleep(0.2)
 
 
 def QuittingBattle():
@@ -2194,7 +2194,7 @@ def QuittingBattle():
     """
     print_out()
 
-    time.sleep(5)
+    click.jitter_sleep(5)
 
     cycle = 0
     while True:
@@ -2229,13 +2229,13 @@ def GoBackHSAction():
     global FSM_state
 
     print_out()
-    time.sleep(3)
+    click.jitter_sleep(3)
 
     while not get_screen.test_hs_available():
         if quitting_flag or stop_after_current_game:
             sys.exit(0)
         click.enter_HS()
-        time.sleep(10)
+        click.jitter_sleep(10)
 
     # 有时候炉石进程会直接重写Power.log, 这时应该重新创建文件操作句柄
     init()
@@ -2256,7 +2256,7 @@ def MainMenuAction():
     # 只留一帧的 UI 稳定时间：能走到这里说明 _initial_fsm_state 已经认出主界面，
     # enter_battle 自己会「识别 → 点中心 → 再识别」，原来固定等 3 秒纯属白等
     # （用户反馈：点开始后鼠标要等好一会才动）。
-    time.sleep(0.2)
+    click.jitter_sleep(0.2)
 
     import battle_entry
     result = battle_entry.enter_battle(

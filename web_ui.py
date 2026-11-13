@@ -3556,9 +3556,9 @@ def _manual_concede_inner() -> dict:
     try:
         with hs_click.hearthstone_action_session():
             hs_click.click_setting()  # 齿轮 (1895, 1060)
-            time.sleep(1.0)  # 等游戏菜单弹出
+            hs_click.jitter_sleep(1.0)  # 等游戏菜单弹出
             hs_click.click_concede()  # 认输 (960, 380)
-        time.sleep(1.0)
+        hs_click.jitter_sleep(1.0)
     except Exception as exc:
         return {"ok": False, "error": f"投降点击失败：{exc}"}
     finally:

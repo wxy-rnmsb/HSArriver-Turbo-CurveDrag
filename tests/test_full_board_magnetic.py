@@ -107,6 +107,8 @@ class FullBoardMagneticTests(unittest.TestCase):
             # 拖动端点要经 display_mapping 换算成屏幕坐标；注入"读不到客户区"，
             # 断言就用客户区相对坐标（不受测试机窗口位置/尺寸影响）。
             patch.object(hearthstone_click, "_display_mapping", return_value=None),
+            patch.object(hearthstone_click, "_jitter_click_point",
+                         side_effect=lambda x, y: (x, y)),
         ):
             drag(
                 card_index=2,

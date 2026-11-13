@@ -128,6 +128,31 @@ class MouseMotionCurveTests(unittest.TestCase):
         self.assertTrue(any(y > 2 for _, y in mouse.points), mouse.points)
         self.assertGreaterEqual(clock.now, 0.20)
 
+    def test_click_jitter_never_moves_left_and_stays_in_bounds(self):
+        xs = []
+        ys = []
+        for _ in range(2000):
+            x, y = hearthstone_click._jitter_click_point(500, 400)
+            xs.append(x - 500)
+            ys.append(y - 400)
+
+        self.assertTrue(all(0 <= value <= 10 for value in xs), (min(xs), max(xs)))
+        self.assertTrue(all(-15 <= value <= 15 for value in ys), (min(ys), max(ys)))
+        self.assertGreater(sum(xs) / len(xs), 2.5)
+        self.assertLess(sum(xs) / len(xs), 3.5)
+        self.assertGreater(sum(ys) / len(ys), -1.0)
+        self.assertLess(sum(ys) / len(ys), 1.0)
+
+    def test_jitter_delay_uses_eight_percent_bounds(self):
+        with patch.object(hearthstone_click.random, "uniform",
+                          return_value=0.92):
+            self.assertAlmostEqual(
+                0.092, hearthstone_click.jitter_delay(0.1), places=6)
+        with patch.object(hearthstone_click.random, "uniform",
+                          return_value=1.08):
+            self.assertAlmostEqual(
+                0.108, hearthstone_click.jitter_delay(0.1), places=6)
+
     def test_reset_point_stays_inside_bottom_right_region(self):
         x1, y1, x2, y2 = hearthstone_click.MOUSE_RESET_REGION
         points = {hearthstone_click._random_reset_point() for _ in range(200)}
